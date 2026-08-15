@@ -12,6 +12,12 @@ struct MountGateApp: App {
                 .environmentObject(state)
                 .onAppear { appDelegate.state = state }
         }
+
+        Window("MountGate Accounts", id: "accounts") {
+            AccountsView()
+                .environmentObject(state)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -28,14 +34,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if let error = state.engineError {
             Text("Engine error: \(error)")
         } else if state.remotes.isEmpty {
-            Text("No rclone remotes configured")
-            Text("Add remotes with: rclone config")
-                .font(.caption)
+            Text("No accounts yet")
         } else {
             ForEach(state.remotes) { remote in
                 RemoteRow(remote: remote)
@@ -43,7 +48,10 @@ struct MenuContent: View {
         }
 
         Divider()
-        Button("Refresh Remotes") { state.refreshRemotes() }
+        Button("Accounts…") {
+            openWindow(id: "accounts")
+            NSApp.activate(ignoringOtherApps: true)
+        }
         if let controller = state.controller {
             Button("Open Logs Folder") {
                 NSWorkspace.shared.open(controller.logDirectory)

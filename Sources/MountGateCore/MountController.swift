@@ -75,7 +75,7 @@ public final class MountController: ObservableObject {
 
         let process = Process()
         process.executableURL = engine.binaryURL
-        process.arguments = [
+        process.arguments = engine.arguments([
             "nfsmount", remote.spec, point.path,
             "--volname", remote.name,
             "--vfs-cache-mode", "full",
@@ -86,7 +86,7 @@ public final class MountController: ObservableObject {
             "-o", "nolocks", "-o", "locallocks",
             "--log-file", logFile(for: remote).path,
             "--log-level", "INFO",
-        ]
+        ])
         // Never let rclone inherit our stdio: a held pipe write-end keeps
         // readers of the app's output blocked long after we exit.
         process.standardOutput = FileHandle.nullDevice

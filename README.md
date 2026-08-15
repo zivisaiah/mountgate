@@ -30,7 +30,7 @@ Early development. See [milestones](#roadmap) below.
 - [x] M1 — Walking skeleton: mount rclone remotes in Finder from the menu bar
 - [x] M2 — Time Machine spike: Direct mode rejected by macOS 26 (error 45); Staged mode validated end-to-end ([results](spikes/RESULTS.md))
 - [x] M3 — Robust mount lifecycle (auto-remount with backoff, stale-mount recovery)
-- [ ] M4 — Account wizards (S3, SFTP, WebDAV, Google Drive, GCS)
+- [x] M4 — Account wizards (S3-compatible presets, SFTP, WebDAV, Google Drive & GCS via OAuth)
 - [ ] M5 — Time Machine productization
 - [ ] M6 — Settings & polish
 - [ ] M7 — Signed/notarized releases, Homebrew cask

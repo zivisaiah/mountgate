@@ -9,9 +9,30 @@ import Foundation
 ///   4. Homebrew / system locations (developer convenience fallback)
 public struct RcloneEngine: Sendable {
     public let binaryURL: URL
+    /// Dedicated rclone config file. When set, every invocation gets
+    /// `--config` so MountGate never touches the user's own rclone setup.
+    public let configURL: URL?
 
-    public init(binaryURL: URL) {
+    public init(binaryURL: URL, configURL: URL? = nil) {
         self.binaryURL = binaryURL
+        self.configURL = configURL
+    }
+
+    /// MountGate's default config location (Application Support).
+    public static func defaultConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/MountGate/rclone.conf")
+    }
+
+    /// A copy of this engine bound to the given config file.
+    public func withConfig(_ url: URL) -> RcloneEngine {
+        RcloneEngine(binaryURL: binaryURL, configURL: url)
+    }
+
+    /// Final argument vector for an rclone invocation, with `--config` applied.
+    public func arguments(_ args: [String]) -> [String] {
+        guard let configURL else { return args }
+        return ["--config", configURL.path] + args
     }
 
     /// Discover the rclone binary, or throw `MountGateError.rcloneNotFound`.
@@ -42,10 +63,10 @@ public struct RcloneEngine: Sendable {
     /// Run an rclone subcommand to completion and return trimmed stdout.
     /// Throws `MountGateError.rcloneFailed` with stderr on non-zero exit.
     @discardableResult
-    public func run(_ arguments: [String]) throws -> String {
+    public func run(_ args: [String]) throws -> String {
         let process = Process()
         process.executableURL = binaryURL
-        process.arguments = arguments
+        process.arguments = arguments(args)
 
         let stdout = Pipe()
         let stderr = Pipe()
