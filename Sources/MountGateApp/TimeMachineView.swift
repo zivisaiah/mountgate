@@ -128,7 +128,10 @@ private struct DestinationRow: View {
             return
         }
         if !SparseBundle.isAttached(volumePath: destination.volumePath) {
-            try? SparseBundle.attach(destination.bundleURL)
+            let passphrase = destination.encrypted
+                ? TMKeychain.loadPassphrase(destinationName: destination.name)
+                : nil
+            try? SparseBundle.attach(destination.bundleURL, passphrase: passphrase)
         }
         do {
             try PrivilegedOps.addTMDestination(volumePath: destination.volumePath)

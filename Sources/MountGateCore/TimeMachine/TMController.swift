@@ -57,6 +57,10 @@ public final class TMController: ObservableObject {
         }
         try SparseBundle.create(at: bundleURL, volumeName: name,
                                 sizeGB: sizeGB, passphrase: passphrase)
+        if let passphrase {
+            // Keychain storage lets the volume re-attach after reboots.
+            try TMKeychain.savePassphrase(passphrase, destinationName: name)
+        }
         try SparseBundle.attach(bundleURL, passphrase: passphrase)
 
         let destination = TMDestination(
@@ -80,24 +84,21 @@ public final class TMController: ObservableObject {
         }
         if deleteBundle {
             try? FileManager.default.removeItem(at: destination.bundleURL)
+            TMKeychain.deletePassphrase(destinationName: destination.name)
         }
         destinations.removeAll { $0.name == destination.name }
         try store.save(destinations)
     }
 
-    /// Re-attach destination volumes (call at app launch so backupd finds them).
+    /// Re-attach destination volumes (call at app launch so backupd finds
+    /// them). Encrypted bundles read their passphrase from the Keychain.
     public func attachAll() {
-        for destination in destinations where !destination.encrypted {
-            if !SparseBundle.isAttached(volumePath: destination.volumePath) {
-                try? SparseBundle.attach(destination.bundleURL)
-            }
-        }
-        // Encrypted bundles need the passphrase; macOS Keychain remembers
-        // hdiutil passphrases when the user opted in during first attach.
-        for destination in destinations where destination.encrypted {
-            if !SparseBundle.isAttached(volumePath: destination.volumePath) {
-                try? SparseBundle.attach(destination.bundleURL)
-            }
+        for destination in destinations {
+            guard !SparseBundle.isAttached(volumePath: destination.volumePath) else { continue }
+            let passphrase = destination.encrypted
+                ? TMKeychain.loadPassphrase(destinationName: destination.name)
+                : nil
+            try? SparseBundle.attach(destination.bundleURL, passphrase: passphrase)
         }
     }
 
@@ -190,6 +191,9 @@ public final class TMController: ObservableObject {
         try await Task.detached {
             try engine.run(["copy", destination.remoteSpec, target.path, "--transfers", "8"])
         }.value
-        return try SparseBundle.attach(target)
+        let passphrase = destination.encrypted
+            ? TMKeychain.loadPassphrase(destinationName: destination.name)
+            : nil
+        return try SparseBundle.attach(target, passphrase: passphrase)
     }
 }
