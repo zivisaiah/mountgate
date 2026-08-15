@@ -1,0 +1,21 @@
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Bundled rclone binary (downloaded by scripts/fetch-rclone.sh)
+Vendor/rclone
+Vendor/rclone-*
+
+# App bundle output
+dist/
+
+# macOS
+.DS_Store
+
+# Xcode (if ever used)
+xcuserdata/
+DerivedData/
+
+# Spike scratch output
+spikes/output/
