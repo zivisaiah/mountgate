@@ -233,7 +233,8 @@ public final class MountController: ObservableObject {
     }
 
     /// Force-unmount anything under `mountRoot` still mounted from a previous
-    /// run (crash, SIGKILL). Call once at app startup, before mounting.
+    /// run (crash, SIGKILL) and terminate the orphaned rclone processes
+    /// serving them. Call once at app startup, before mounting.
     public func recoverStaleMounts() {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: mountRoot,
@@ -243,6 +244,14 @@ public final class MountController: ObservableObject {
                 forceUnmount(path: entry.path)
             }
         }
+        // A SIGTERM'd app leaves its rclone children alive; unmounting alone
+        // is not always enough for them to notice and exit.
+        let pkill = Process()
+        pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        pkill.arguments = ["-f", "rclone.* nfsmount .* \(mountRoot.path)/"]
+        pkill.standardError = FileHandle.nullDevice
+        try? pkill.run()
+        pkill.waitUntilExit()
     }
 
     // MARK: - Mount table helpers
