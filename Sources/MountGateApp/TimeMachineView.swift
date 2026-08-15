@@ -92,6 +92,7 @@ private struct DestinationRow: View {
             Button("Sync Now") { tm?.requestSync(destination) }
                 .disabled(tm?.syncState(of: destination) == .syncing)
             Menu {
+                Button("Register with Time Machine…") { register() }
                 Button("Restore from Cloud…") { restore() }
                 Button("Remove (keep local bundle)", role: .destructive) {
                     try? tm?.removeDestination(destination, deleteBundle: false)
@@ -118,6 +119,24 @@ private struct DestinationRow: View {
             parts.append("never synced to cloud")
         }
         return parts.joined(separator: " · ")
+    }
+
+    private func register() {
+        if !PrivilegedOps.hasFullDiskAccess() {
+            restoreMessage = "MountGate needs Full Disk Access first: grant it in Privacy Settings, then quit and reopen MountGate."
+            PrivilegedOps.openFullDiskAccessSettings()
+            return
+        }
+        if !SparseBundle.isAttached(volumePath: destination.volumePath) {
+            try? SparseBundle.attach(destination.bundleURL)
+        }
+        do {
+            try PrivilegedOps.addTMDestination(volumePath: destination.volumePath)
+            restoreMessage = "\(destination.name) is now a Time Machine destination."
+            state.tmController?.startWatching()
+        } catch {
+            restoreMessage = "Time Machine refused: \(error.localizedDescription)"
+        }
     }
 
     private func restore() {
