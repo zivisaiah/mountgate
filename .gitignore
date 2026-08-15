@@ -19,3 +19,6 @@ DerivedData/
 
 # Spike scratch output
 spikes/output/
+
+# Claude Code local settings
+.claude/settings.local.json
