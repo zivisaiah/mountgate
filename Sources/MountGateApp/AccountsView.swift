@@ -71,50 +71,88 @@ struct AddAccountSheet: View {
     @State private var saving = false
     @State private var errorMessage: String?
 
+    @State private var showAdvanced = false
+
+    /// Optional OAuth-client fields are hidden behind “Advanced”.
+    private var mainFields: [ProviderField] {
+        provider.usesOAuth
+            ? provider.fields.filter { !["client_id", "client_secret"].contains($0.key) }
+            : provider.fields
+    }
+
+    private var advancedFields: [ProviderField] {
+        provider.usesOAuth
+            ? provider.fields.filter { ["client_id", "client_secret"].contains($0.key) }
+            : []
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Add Account").font(.title2).bold()
 
-            Picker("Service", selection: Binding(
-                get: { provider.id },
-                set: { provider = ProviderCatalog.provider(id: $0) ?? ProviderCatalog.s3 }
-            )) {
-                ForEach(ProviderCatalog.all) { p in
-                    Text(p.label).tag(p.id)
-                }
-            }
-
-            TextField("Account name", text: $name, prompt: Text("my-storage"))
-                .textFieldStyle(.roundedBorder)
-
-            if provider.id == "s3" {
-                Picker("Preset", selection: $s3Preset) {
-                    ForEach(ProviderCatalog.s3Presets) { preset in
-                        Text(preset.label).tag(preset)
+            labeledRow("Service") {
+                Picker("", selection: Binding(
+                    get: { provider.id },
+                    set: {
+                        provider = ProviderCatalog.provider(id: $0) ?? ProviderCatalog.s3
+                        showAdvanced = false
+                    }
+                )) {
+                    ForEach(ProviderCatalog.all) { p in
+                        Text(p.label).tag(p.id)
                     }
                 }
+                .labelsHidden()
             }
 
-            ForEach(provider.fields) { field in
-                let binding = Binding(
-                    get: { values[field.key] ?? "" },
-                    set: { values[field.key] = $0 })
-                if field.secure {
-                    SecureField(field.label, text: binding,
-                                prompt: Text(field.placeholder))
+            labeledRow("Account name") {
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("", text: $name, prompt: Text("e.g. gdrive"))
                         .textFieldStyle(.roundedBorder)
-                } else {
-                    TextField(field.label, text: binding,
-                              prompt: Text(placeholder(for: field)))
-                        .textFieldStyle(.roundedBorder)
+                    Text("A nickname of your choice — also the Finder folder name.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if provider.id == "s3" {
+                labeledRow("Preset") {
+                    Picker("", selection: $s3Preset) {
+                        ForEach(ProviderCatalog.s3Presets) { preset in
+                            Text(preset.label).tag(preset)
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
+
+            ForEach(mainFields) { field in
+                labeledRow(field.required ? field.label : field.label + " (optional)") {
+                    fieldControl(field)
                 }
             }
 
             if provider.usesOAuth {
-                Label("Your browser will open to sign in with Google.",
+                Label("Pressing Add opens your browser to sign in with Google.",
                       systemImage: "globe")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if !advancedFields.isEmpty {
+                    DisclosureGroup("Advanced: use your own Google OAuth client",
+                                    isExpanded: $showAdvanced) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(advancedFields) { field in
+                                labeledRow(field.label) { fieldControl(field) }
+                            }
+                            Text("Leave empty to use the built-in client (fine for personal use).")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 6)
+                    }
+                    .font(.callout)
+                }
             }
 
             if let errorMessage {
@@ -125,6 +163,11 @@ struct AddAccountSheet: View {
             }
 
             HStack {
+                if saving && provider.usesOAuth {
+                    Text("Waiting for browser sign-in…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -134,7 +177,31 @@ struct AddAccountSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 500)
+    }
+
+    @ViewBuilder
+    private func labeledRow(_ label: String, @ViewBuilder content: () -> some View) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .frame(width: 140, alignment: .trailing)
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private func fieldControl(_ field: ProviderField) -> some View {
+        let binding = Binding(
+            get: { values[field.key] ?? "" },
+            set: { values[field.key] = $0 })
+        if field.secure {
+            SecureField("", text: binding, prompt: Text(field.placeholder))
+                .textFieldStyle(.roundedBorder)
+        } else {
+            TextField("", text: binding, prompt: Text(placeholder(for: field)))
+                .textFieldStyle(.roundedBorder)
+        }
     }
 
     private var requiredFilled: Bool {
