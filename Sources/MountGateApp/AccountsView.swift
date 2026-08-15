@@ -70,6 +70,7 @@ struct AddAccountSheet: View {
     @State private var s3Preset: S3Preset = ProviderCatalog.s3Presets[0]
     @State private var saving = false
     @State private var errorMessage: String?
+    @State private var authURL: String?
 
     @State private var showAdvanced = false
 
@@ -162,6 +163,23 @@ struct AddAccountSheet: View {
                     .textSelection(.enabled)
             }
 
+            if saving, provider.usesOAuth, let authURL {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Browser didn’t open, or Google shows an error?")
+                        .font(.caption)
+                    HStack {
+                        Button("Copy Sign-in Link") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(authURL, forType: .string)
+                        }
+                        .controlSize(.small)
+                        Text("Paste it into a private/incognito window and sign in there.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             HStack {
                 if saving && provider.usesOAuth {
                     Text("Waiting for browser sign-in…")
@@ -219,6 +237,7 @@ struct AddAccountSheet: View {
     private func save() {
         saving = true
         errorMessage = nil
+        authURL = nil
         var fieldValues = values
         if provider.id == "s3" {
             fieldValues["provider"] = s3Preset.provider
@@ -228,7 +247,10 @@ struct AddAccountSheet: View {
         Task {
             do {
                 try await state.addAccount(provider: provider, name: name,
-                                           fieldValues: fieldValues)
+                                           fieldValues: fieldValues,
+                                           onAuthURL: { url in
+                    Task { @MainActor in authURL = url }
+                })
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

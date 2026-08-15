@@ -77,8 +77,10 @@ final class AppState: ObservableObject {
     }
 
     /// Create an account; runs the browser OAuth flow first when needed.
+    /// `onAuthURL` gets the sign-in link for manual retry in another browser.
     func addAccount(provider: Provider, name: String,
-                    fieldValues: [String: String]) async throws {
+                    fieldValues: [String: String],
+                    onAuthURL: (@Sendable (String) -> Void)? = nil) async throws {
         guard let configStore, let authFlow else { return }
         var options = provider.constantOptions
         for (key, value) in fieldValues where !value.isEmpty {
@@ -91,7 +93,8 @@ final class AppState: ObservableObject {
                 options["token"] = try await authFlow.authorize(
                     rcloneType: provider.rcloneType,
                     clientID: options["client_id"],
-                    clientSecret: options["client_secret"])
+                    clientSecret: options["client_secret"],
+                    onAuthURL: onAuthURL)
             }
         }
         try configStore.createRemote(name: name, type: provider.rcloneType,
