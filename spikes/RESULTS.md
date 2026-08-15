@@ -26,18 +26,35 @@ Machine: macOS 26.6.1 (Tahoe), Apple Silicon, rclone v1.75.0
    writes still in the VFS cache upload only if rclone exits gracefully.
    Supervision + clean shutdown matter for backup integrity.
 
-### Phase 2: tmutil acceptance + real backup (requires sudo) — ⏳ PENDING
+### Phase 2: tmutil acceptance (sudo + Full Disk Access) — ❌ FAIL (2026-08-15)
 
-The open question: does `tmutil setdestination -a /Volumes/MountGateTM`
-accept an attached sparsebundle whose bundle lives on an NFS mount, and does
-`backupd` complete a real backup into it on macOS 26? Run:
+`sudo tmutil setdestination -a /Volumes/MountGateTM` →
+**"Operation not supported (error 45)"**. macOS 26 detects and rejects
+disk-image volumes whose backing store is an NFS mount.
 
-```sh
-./spikes/tm-direct-spike.sh phase2   # prompts for sudo password
-sudo tmutil startbackup -b           # then watch: tmutil status
-```
+Control test: an identical sparsebundle on the **local** disk was
+**accepted** — so the rejection is specifically about network-backed images,
+not disk images in general.
 
-## Staged mode — local sparsebundle + rclone sync after backup
+**Verdict: Direct mode is dead on macOS 26. MountGate ships Staged mode.**
 
-Not yet run. Guaranteed-workable per Wasabi-documented pattern; will validate
-during M5.
+Note: `tmutil setdestination` also requires the invoking terminal to have
+Full Disk Access — the M5 app flow must request FDA (or use the System
+Settings TM UI path).
+
+## Staged mode — local sparsebundle + rclone sync after backup — ✅ PASS (2026-08-15)
+
+| Step | Result |
+|---|---|
+| Local case-sensitive APFS sparsebundle accepted by `tmutil setdestination` | ✅ (`Kind: Local`) |
+| backupd starts a REAL backup into it | ✅ `.inprogress` observed; ~1.8 GiB written before our tiny 2 GB test bundle ran out |
+| TM claims the volume (user writes denied post-setdestination) | expected — backupd owns it |
+| `rclone sync --checksum` bundle → cloud: initial | ✅ 243 files |
+| Incremental sync after attach/detach | ✅ only 2 changed files / 24 MiB re-uploaded (band-level delta) |
+| Restore: `rclone copy` back + `hdiutil attach` | ✅ volume mounts, backup contents visible |
+
+**Additional learnings for M5**
+- backupd re-attaches destination images by itself when a backup starts.
+- Ziv's disk is FileVault-encrypted → macOS warns when the destination bundle
+  is unencrypted. Create bundles with `-encryption AES-256` by default.
+- Bundle size cap = the disk quota TM sees; size it deliberately in the wizard.

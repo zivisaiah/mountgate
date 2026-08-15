@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/ziv/Work/zivisaiah/mountgate log --oneline -5)",
+      "Bash(git -C /Users/ziv/Work/zivisaiah/mountgate status --short)"
+    ]
+  }
+}

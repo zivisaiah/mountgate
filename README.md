@@ -14,12 +14,11 @@ Its headline feature: **Time Machine backups to your own cloud storage.**
   70+ storage backends, a VFS write cache, and client-side encryption.
 - **Mounting**: `rclone nfsmount` runs a localhost NFS server that macOS's *built-in*
   NFS client mounts. No macFUSE, no kexts, no reduced security on Apple Silicon.
-- **Time Machine**: modern macOS refuses NFS/plain-SMB destinations, so MountGate
-  manages an APFS **sparsebundle** that Time Machine backs up into:
-  - **Staged mode** (default): Time Machine writes to a local sparsebundle; after each
-    backup MountGate syncs the changed band files to your cloud remote.
-  - **Direct mode** (where supported): the sparsebundle lives on the cloud mount and is
-    attached as a local volume.
+- **Time Machine**: modern macOS refuses NFS/plain-SMB destinations — and (verified
+  on macOS 26) also rejects disk images backed by network mounts. So MountGate uses
+  **Staged mode**: Time Machine backs up into a local APFS sparsebundle, and after
+  each backup MountGate syncs only the changed band files to your cloud remote.
+  Restore = download the bundle, attach, browse your backups.
 
 ## Status
 
@@ -29,7 +28,7 @@ Early development. See [milestones](#roadmap) below.
 
 - [x] M0 — Repo scaffolding
 - [x] M1 — Walking skeleton: mount rclone remotes in Finder from the menu bar
-- [ ] M2 — Time Machine spike: validate Direct & Staged modes on macOS 26
+- [x] M2 — Time Machine spike: Direct mode rejected by macOS 26 (error 45); Staged mode validated end-to-end ([results](spikes/RESULTS.md))
 - [ ] M3 — Robust mount lifecycle (supervision, recovery)
 - [ ] M4 — Account wizards (S3, SFTP, WebDAV, Google Drive, GCS)
 - [ ] M5 — Time Machine productization
