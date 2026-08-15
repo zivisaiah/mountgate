@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     let controller: MountController?
     let configStore: ConfigStore?
     let authFlow: AuthFlow?
+    let tmController: TMController?
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -20,13 +21,22 @@ final class AppState: ObservableObject {
             let engine = try RcloneEngine.locate()
                 .withConfig(RcloneEngine.defaultConfigURL())
             let controller = MountController(engine: engine)
+            let tmController = TMController(engine: engine)
             self.controller = controller
             self.configStore = ConfigStore(engine: engine)
             self.authFlow = AuthFlow(engine: engine)
+            self.tmController = tmController
             controller.recoverStaleMounts()
+            tmController.attachAll()
+            if !tmController.destinations.isEmpty {
+                tmController.startWatching()
+            }
             engineVersion = (try? engine.version()) ?? "rclone (version unknown)"
-            // Re-render menu rows whenever any mount's state changes.
+            // Re-render menu rows whenever any mount or TM state changes.
             controller.objectWillChange
+                .sink { [weak self] _ in self?.objectWillChange.send() }
+                .store(in: &cancellables)
+            tmController.objectWillChange
                 .sink { [weak self] _ in self?.objectWillChange.send() }
                 .store(in: &cancellables)
             refreshRemotes()
@@ -34,6 +44,7 @@ final class AppState: ObservableObject {
             controller = nil
             configStore = nil
             authFlow = nil
+            tmController = nil
             engineError = error.localizedDescription
         }
     }

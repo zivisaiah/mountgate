@@ -18,6 +18,12 @@ struct MountGateApp: App {
                 .environmentObject(state)
         }
         .windowResizability(.contentSize)
+
+        Window("Time Machine Backups", id: "timemachine") {
+            TimeMachineView()
+                .environmentObject(state)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -47,9 +53,20 @@ struct MenuContent: View {
             }
         }
 
+        if let tm = state.tmController, !tm.destinations.isEmpty {
+            Divider()
+            ForEach(tm.destinations) { destination in
+                TMMenuRow(destination: destination)
+            }
+        }
+
         Divider()
         Button("Accounts…") {
             openWindow(id: "accounts")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        Button("Time Machine…") {
+            openWindow(id: "timemachine")
             NSApp.activate(ignoringOtherApps: true)
         }
         if let controller = state.controller {
@@ -65,6 +82,44 @@ struct MenuContent: View {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+}
+
+struct TMMenuRow: View {
+    @EnvironmentObject var state: AppState
+    let destination: TMDestination
+
+    var body: some View {
+        let syncState = state.tmController?.syncState(of: destination) ?? .idle
+        Button {
+            state.tmController?.requestSync(destination)
+        } label: {
+            HStack {
+                Image(systemName: icon(for: syncState))
+                Text(label(for: syncState))
+            }
+        }
+        .disabled(syncState == .syncing)
+    }
+
+    private func icon(for s: TMSyncState) -> String {
+        switch s {
+        case .idle: return "clock.arrow.circlepath"
+        case .syncing: return "arrow.triangle.2.circlepath"
+        case .failed: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func label(for s: TMSyncState) -> String {
+        switch s {
+        case .syncing: return "\(destination.name): syncing to cloud…"
+        case .failed: return "\(destination.name): sync failed — retry"
+        case .idle:
+            if let lastSync = destination.lastSync {
+                return "\(destination.name): synced \(lastSync.formatted(.relative(presentation: .named)))"
+            }
+            return "\(destination.name): sync to cloud"
+        }
     }
 }
 
