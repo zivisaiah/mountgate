@@ -72,9 +72,17 @@ public final class MountController: ObservableObject {
             "--volname", remote.name,
             "--vfs-cache-mode", "full",
             "--dir-cache-time", "30s",
+            // rclone's NFS server has no lock daemon; without local locks,
+            // hdiutil (sparsebundles → Time Machine) fails with
+            // "No locks available". Safe here: each mount has one client.
+            "-o", "nolocks", "-o", "locallocks",
             "--log-file", logFile(for: remote).path,
             "--log-level", "INFO",
         ]
+        // Never let rclone inherit our stdio: a held pipe write-end keeps
+        // readers of the app's output blocked long after we exit.
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         let name = remote.name
         process.terminationHandler = { [weak self] proc in
             Task { @MainActor [weak self] in
