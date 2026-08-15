@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+@preconcurrency import UserNotifications
 import MountGateCore
 
 @MainActor
@@ -39,6 +40,14 @@ final class AppState: ObservableObject {
             tmController.objectWillChange
                 .sink { [weak self] _ in self?.objectWillChange.send() }
                 .store(in: &cancellables)
+            // Notify when a mount that was up goes down unexpectedly.
+            controller.$states
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] newStates in
+                    self?.notifyOnFailures(newStates)
+                }
+                .store(in: &cancellables)
+            applyMountSettings()
             refreshRemotes()
         } catch {
             controller = nil
@@ -88,6 +97,38 @@ final class AppState: ObservableObject {
         try configStore.createRemote(name: name, type: provider.rcloneType,
                                      options: options)
         refreshRemotes()
+    }
+
+    /// Push cache settings from UserDefaults into the mount controller.
+    func applyMountSettings() {
+        guard let controller else { return }
+        let sizeGB = UserDefaults.standard.object(forKey: "cacheMaxSizeGB") as? Int ?? 10
+        let ageHours = UserDefaults.standard.object(forKey: "cacheMaxAgeHours") as? Int ?? 24
+        controller.extraMountArguments = [
+            "--vfs-cache-max-size", "\(sizeGB)G",
+            "--vfs-cache-max-age", "\(ageHours)h",
+        ]
+    }
+
+    private var lastStates: [String: MountState] = [:]
+
+    private func notifyOnFailures(_ newStates: [String: MountState]) {
+        defer { lastStates = newStates }
+        for (name, state) in newStates {
+            guard case .failed(let message) = state,
+                  lastStates[name] == .mounted else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "\(name) disconnected"
+            content.body = message
+            let request = UNNotificationRequest(
+                identifier: "mount-failed-\(name)-\(Date().timeIntervalSince1970)",
+                content: content, trigger: nil)
+            let center = UNUserNotificationCenter.current()
+            center.requestAuthorization(options: [.alert]) { granted, _ in
+                guard granted else { return }
+                center.add(request)
+            }
+        }
     }
 
     func deleteAccount(name: String) async {

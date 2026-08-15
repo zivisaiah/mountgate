@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch rclone engine
+        run: ./scripts/fetch-rclone.sh
+      - name: Run tests
+        run: swift test
+      - name: Build app bundle
+        run: UNIVERSAL=1 ./scripts/build-app.sh
+      - name: Zip app
+        run: ditto -c -k --keepParent dist/MountGate.app dist/MountGate.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MountGate-app
+          path: dist/MountGate.zip
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch rclone engine
+        run: ./scripts/fetch-rclone.sh
+      - name: Build universal app
+        run: UNIVERSAL=1 ./scripts/build-app.sh
+      - name: Zip app
+        run: ditto -c -k --keepParent dist/MountGate.app "dist/MountGate-${GITHUB_REF_NAME}.zip"
+      # NOTE: artifact is ad-hoc signed until a Developer ID cert is added.
+      # Users must clear quarantine: xattr -dr com.apple.quarantine MountGate.app
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "MountGate $GITHUB_REF_NAME" \
+            --generate-notes \
+            "dist/MountGate-${GITHUB_REF_NAME}.zip"

@@ -24,6 +24,11 @@ struct MountGateApp: App {
                 .environmentObject(state)
         }
         .windowResizability(.contentSize)
+
+        Settings {
+            SettingsView()
+                .environmentObject(state)
+        }
     }
 }
 
@@ -68,6 +73,9 @@ struct MenuContent: View {
         Button("Time Machine…") {
             openWindow(id: "timemachine")
             NSApp.activate(ignoringOtherApps: true)
+        }
+        SettingsLink {
+            Text("Settings…")
         }
         if let controller = state.controller {
             Button("Open Logs Folder") {

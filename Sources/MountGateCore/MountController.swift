@@ -21,6 +21,8 @@ public final class MountController: ObservableObject {
     /// When true (default), a mount that dies unexpectedly is remounted
     /// automatically with exponential backoff (1s … 60s, up to 8 tries).
     public var autoRemount = true
+    /// Extra rclone flags appended to every mount (user cache settings etc.).
+    public var extraMountArguments: [String] = []
     private static let maxRemountAttempts = 8
 
     /// Directory under which per-remote mount points are created (~/MountGate).
@@ -86,7 +88,7 @@ public final class MountController: ObservableObject {
             "-o", "nolocks", "-o", "locallocks",
             "--log-file", logFile(for: remote).path,
             "--log-level", "INFO",
-        ])
+        ] + extraMountArguments)
         // Never let rclone inherit our stdio: a held pipe write-end keeps
         // readers of the app's output blocked long after we exit.
         process.standardOutput = FileHandle.nullDevice

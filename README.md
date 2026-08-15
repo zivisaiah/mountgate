@@ -32,8 +32,8 @@ Early development. See [milestones](#roadmap) below.
 - [x] M3 — Robust mount lifecycle (auto-remount with backoff, stale-mount recovery)
 - [x] M4 — Account wizards (S3-compatible presets, SFTP, WebDAV, Google Drive & GCS via OAuth)
 - [x] M5 — Time Machine productization (setup wizard, auto-sync after backups, restore)
-- [ ] M6 — Settings & polish
-- [ ] M7 — Signed/notarized releases, Homebrew cask
+- [x] M6 — Settings (login item, cache limits), disconnect notifications
+- [ ] M7 — Signed/notarized releases (needs Apple Developer ID), Homebrew cask — CI with unsigned artifacts is live
 
 ## Building
 
