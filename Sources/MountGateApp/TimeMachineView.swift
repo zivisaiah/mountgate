@@ -135,7 +135,14 @@ private struct DestinationRow: View {
             restoreMessage = "\(destination.name) is now a Time Machine destination."
             state.tmController?.startWatching()
         } catch {
-            restoreMessage = "Time Machine refused: \(error.localizedDescription)"
+            // The osascript admin route loses FDA attribution (TCC sees the
+            // system authorization trampoline, not MountGate), so tmutil can
+            // refuse even when MountGate has FDA. Hand the user a command
+            // for a terminal that has both sudo and FDA.
+            let command = "sudo tmutil setdestination -a \"\(destination.volumePath)\""
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(command, forType: .string)
+            restoreMessage = "macOS blocked in-app registration. Run this in Terminal (already copied to clipboard): \(command)"
         }
     }
 
