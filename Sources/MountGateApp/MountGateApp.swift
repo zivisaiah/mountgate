@@ -30,6 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state = AppState()
         debugLog("state ready, engineError=\(state.engineError ?? "nil")")
 
+        // On notched MacBooks a full menu bar pushes the newest (leftmost)
+        // status item into the notch dead-zone, invisibly. Prefer a slot
+        // well inside the visible right side; a user ⌘-drag still wins
+        // because this only registers a default, it never overwrites.
+        UserDefaults.standard.register(defaults: [
+            "NSStatusItem Preferred Position Item-0": 250,
+        ])
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "externaldrive.badge.icloud",
