@@ -81,7 +81,11 @@ public final class MountController: ObservableObject {
             "nfsmount", remote.spec, point.path,
             "--volname", remote.name,
             "--vfs-cache-mode", "full",
-            "--dir-cache-time", "30s",
+            // Long dir cache: cloud listings are expensive and rclone
+            // invalidates via change polling anyway; a short cache causes
+            // Finder stalls ("server connections interrupted") on slow
+            // backends like Google Drive.
+            "--dir-cache-time", "5m",
             // rclone's NFS server has no lock daemon; without local locks,
             // hdiutil (sparsebundles → Time Machine) fails with
             // "No locks available". Safe here: each mount has one client.
