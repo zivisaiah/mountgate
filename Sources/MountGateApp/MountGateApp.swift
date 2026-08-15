@@ -1,179 +1,234 @@
+import AppKit
 import SwiftUI
 import MountGateCore
 
+// AppKit lifecycle, not SwiftUI's App/MenuBarExtra: on macOS 26 SwiftUI's
+// MenuBarExtra can silently fail to create its status item (no window, no
+// entry in Menu Bar settings), while NSStatusItem works reliably.
 @main
-struct MountGateApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var state = AppState()
-
-    var body: some Scene {
-        MenuBarExtra("MountGate", systemImage: "externaldrive.badge.icloud") {
-            MenuContent()
-                .environmentObject(state)
-                .onAppear { appDelegate.state = state }
-        }
-
-        Window("MountGate Accounts", id: "accounts") {
-            AccountsView()
-                .environmentObject(state)
-        }
-        .windowResizability(.contentSize)
-
-        Window("Time Machine Backups", id: "timemachine") {
-            TimeMachineView()
-                .environmentObject(state)
-        }
-        .windowResizability(.contentSize)
-
-        Settings {
-            SettingsView()
-                .environmentObject(state)
+enum AppMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        withExtendedLifetime(delegate) {
+            app.run()
         }
     }
 }
 
-/// Ensures every mount is torn down when the app quits.
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    var state: AppState?
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private(set) var state: AppState!
+    private var statusItem: NSStatusItem!
+    private var windows: [String: NSWindow] = [:]
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        debugLog("didFinishLaunching")
+        NSApp.setActivationPolicy(.accessory)
+        state = AppState()
+        debugLog("state ready, engineError=\(state.engineError ?? "nil")")
+
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "externaldrive.badge.icloud",
+                                   accessibilityDescription: "MountGate")
+            button.image?.isTemplate = true
+        }
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.autoenablesItems = false // we manage isEnabled per item
+        statusItem.menu = menu
+        debugLog("statusItem created, visible=\(statusItem.isVisible), window=\(String(describing: statusItem.button?.window?.frame))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, let button = self.statusItem.button else { return }
+            self.debugLog("after 3s: visible=\(self.statusItem.isVisible), window=\(String(describing: button.window?.frame)), onScreen=\(button.window?.isVisible ?? false), image=\(String(describing: button.image?.size))")
+        }
+    }
+
+    private func debugLog(_ message: String) {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/MountGate/app.log")
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let line = "\(Date()) \(message)\n"
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? line.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated {
-            state?.controller?.unmountAllForShutdown()
-        }
+        state.controller?.unmountAllForShutdown()
     }
-}
 
-struct MenuContent: View {
-    @EnvironmentObject var state: AppState
-    @Environment(\.openWindow) private var openWindow
+    // MARK: - Menu
 
-    var body: some View {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        state.refreshRemotes()
+
         if let error = state.engineError {
-            Text("Engine error: \(error)")
+            menu.addItem(disabled("Engine error: \(error)"))
         } else if state.remotes.isEmpty {
-            Text("No accounts yet")
+            menu.addItem(disabled("No accounts yet"))
         } else {
-            ForEach(state.remotes) { remote in
-                RemoteRow(remote: remote)
+            for remote in state.remotes {
+                addRemoteItems(to: menu, remote: remote)
             }
         }
 
         if let tm = state.tmController, !tm.destinations.isEmpty {
-            Divider()
-            ForEach(tm.destinations) { destination in
-                TMMenuRow(destination: destination)
+            menu.addItem(.separator())
+            for destination in tm.destinations {
+                addTMItem(to: menu, destination: destination)
             }
         }
 
-        Divider()
-        Button("Accounts…") {
-            openWindow(id: "accounts")
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        Button("Time Machine…") {
-            openWindow(id: "timemachine")
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        SettingsLink {
-            Text("Settings…")
-        }
-        if let controller = state.controller {
-            Button("Open Logs Folder") {
-                NSWorkspace.shared.open(controller.logDirectory)
-            }
-        }
-        Text(state.engineVersion)
-            .font(.caption)
-        Divider()
-        Button("Quit MountGate") {
-            state.controller?.unmountAllForShutdown()
-            NSApplication.shared.terminate(nil)
-        }
-        .keyboardShortcut("q")
-    }
-}
-
-struct TMMenuRow: View {
-    @EnvironmentObject var state: AppState
-    let destination: TMDestination
-
-    var body: some View {
-        let syncState = state.tmController?.syncState(of: destination) ?? .idle
-        Button {
-            state.tmController?.requestSync(destination)
-        } label: {
-            HStack {
-                Image(systemName: icon(for: syncState))
-                Text(label(for: syncState))
-            }
-        }
-        .disabled(syncState == .syncing)
+        menu.addItem(.separator())
+        menu.addItem(item("Accounts…", #selector(openAccounts)))
+        menu.addItem(item("Time Machine…", #selector(openTimeMachine)))
+        menu.addItem(item("Settings…", #selector(openSettings)))
+        menu.addItem(item("Open Logs Folder", #selector(openLogs)))
+        menu.addItem(.separator())
+        let quit = item("Quit MountGate", #selector(quitApp))
+        quit.keyEquivalent = "q"
+        menu.addItem(quit)
     }
 
-    private func icon(for s: TMSyncState) -> String {
-        switch s {
-        case .idle: return "clock.arrow.circlepath"
-        case .syncing: return "arrow.triangle.2.circlepath"
-        case .failed: return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private func label(for s: TMSyncState) -> String {
-        switch s {
-        case .syncing: return "\(destination.name): syncing to cloud…"
-        case .failed: return "\(destination.name): sync failed — retry"
-        case .idle:
-            if let lastSync = destination.lastSync {
-                return "\(destination.name): synced \(lastSync.formatted(.relative(presentation: .named)))"
-            }
-            return "\(destination.name): sync to cloud"
-        }
-    }
-}
-
-struct RemoteRow: View {
-    @EnvironmentObject var state: AppState
-    let remote: Remote
-
-    var body: some View {
+    private func addRemoteItems(to menu: NSMenu, remote: Remote) {
         let mountState = state.controller?.state(of: remote) ?? .unmounted
-        Button {
-            state.toggle(remote)
-        } label: {
-            HStack {
-                Image(systemName: icon(for: mountState))
-                Text(label(for: mountState))
-            }
+        let title: String
+        let symbol: String
+        switch mountState {
+        case .mounted: title = "Unmount \(remote.name)"; symbol = "checkmark.circle.fill"
+        case .mounting: title = "Mounting \(remote.name)…"; symbol = "arrow.triangle.2.circlepath"
+        case .unmounting: title = "Unmounting \(remote.name)…"; symbol = "arrow.triangle.2.circlepath"
+        case .failed: title = "Mount \(remote.name) (failed)"; symbol = "exclamationmark.triangle.fill"
+        case .unmounted: title = "Mount \(remote.name)"; symbol = "circle"
         }
-        .disabled(mountState.isBusy)
+        let menuItem = item(title, #selector(toggleRemote(_:)))
+        menuItem.representedObject = remote.name
+        menuItem.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        menuItem.isEnabled = !mountState.isBusy
+        menu.addItem(menuItem)
 
-        if mountState == .mounted, let controller = state.controller {
-            Button("    Open \"\(remote.name)\" in Finder") {
-                NSWorkspace.shared.open(controller.mountPoint(for: remote))
-            }
+        if mountState == .mounted {
+            let open = item("    Open “\(remote.name)” in Finder", #selector(openRemoteInFinder(_:)))
+            open.representedObject = remote.name
+            menu.addItem(open)
         }
         if case .failed(let message) = mountState {
-            Text("    \(message)")
-                .font(.caption)
+            menu.addItem(disabled("    \(message)"))
         }
     }
 
-    private func icon(for s: MountState) -> String {
-        switch s {
-        case .mounted: return "checkmark.circle.fill"
-        case .mounting, .unmounting: return "arrow.triangle.2.circlepath"
-        case .failed: return "exclamationmark.triangle.fill"
-        case .unmounted: return "circle"
+    private func addTMItem(to menu: NSMenu, destination: TMDestination) {
+        let syncState = state.tmController?.syncState(of: destination) ?? .idle
+        let title: String
+        switch syncState {
+        case .syncing: title = "\(destination.name): syncing to cloud…"
+        case .failed: title = "\(destination.name): sync failed — retry"
+        case .idle:
+            if let lastSync = destination.lastSync {
+                title = "\(destination.name): synced \(lastSync.formatted(.relative(presentation: .named)))"
+            } else {
+                title = "\(destination.name): sync to cloud"
+            }
+        }
+        let menuItem = item(title, #selector(syncDestination(_:)))
+        menuItem.representedObject = destination.name
+        menuItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath",
+                                 accessibilityDescription: nil)
+        menuItem.isEnabled = syncState != .syncing
+        menu.addItem(menuItem)
+    }
+
+    private func item(_ title: String, _ action: Selector) -> NSMenuItem {
+        let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        menuItem.target = self
+        return menuItem
+    }
+
+    private func disabled(_ title: String) -> NSMenuItem {
+        let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        menuItem.isEnabled = false
+        return menuItem
+    }
+
+    // MARK: - Actions
+
+    @objc private func toggleRemote(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        state.toggle(Remote(name: name))
+    }
+
+    @objc private func openRemoteInFinder(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String,
+              let controller = state.controller else { return }
+        NSWorkspace.shared.open(controller.mountPoint(for: Remote(name: name)))
+    }
+
+    @objc private func syncDestination(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String,
+              let tm = state.tmController,
+              let destination = tm.destinations.first(where: { $0.name == name }) else { return }
+        tm.requestSync(destination)
+    }
+
+    @objc private func openAccounts() {
+        showWindow(id: "accounts", title: "MountGate Accounts",
+                   size: NSSize(width: 460, height: 360)) {
+            AnyView(AccountsView().environmentObject(self.state))
         }
     }
 
-    private func label(for s: MountState) -> String {
-        switch s {
-        case .mounted: return "Unmount \(remote.name)"
-        case .mounting: return "Mounting \(remote.name)…"
-        case .unmounting: return "Unmounting \(remote.name)…"
-        case .failed: return "Mount \(remote.name) (failed)"
-        case .unmounted: return "Mount \(remote.name)"
+    @objc private func openTimeMachine() {
+        showWindow(id: "timemachine", title: "Time Machine Backups",
+                   size: NSSize(width: 560, height: 380)) {
+            AnyView(TimeMachineView().environmentObject(self.state))
         }
+    }
+
+    @objc private func openSettings() {
+        showWindow(id: "settings", title: "MountGate Settings",
+                   size: NSSize(width: 440, height: 320)) {
+            AnyView(SettingsView().environmentObject(self.state))
+        }
+    }
+
+    @objc private func openLogs() {
+        guard let controller = state.controller else { return }
+        NSWorkspace.shared.open(controller.logDirectory)
+    }
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
+    }
+
+    // MARK: - Window management
+
+    private func showWindow(id: String, title: String, size: NSSize,
+                            content: @escaping () -> AnyView) {
+        if let window = windows[id] {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
+        window.title = title
+        window.isReleasedWhenClosed = false
+        window.contentViewController = NSHostingController(rootView: content())
+        window.center()
+        windows[id] = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
