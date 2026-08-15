@@ -44,6 +44,11 @@ struct MenuContent: View {
 
         Divider()
         Button("Refresh Remotes") { state.refreshRemotes() }
+        if let controller = state.controller {
+            Button("Open Logs Folder") {
+                NSWorkspace.shared.open(controller.logDirectory)
+            }
+        }
         Text(state.engineVersion)
             .font(.caption)
         Divider()

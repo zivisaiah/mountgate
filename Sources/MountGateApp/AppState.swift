@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
             let engine = try RcloneEngine.locate()
             let controller = MountController(engine: engine)
             self.controller = controller
+            controller.recoverStaleMounts()
             engineVersion = (try? engine.version()) ?? "rclone (version unknown)"
             remotes = (try? engine.listRemotes()) ?? []
             // Re-render menu rows whenever any mount's state changes.

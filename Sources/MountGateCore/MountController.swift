@@ -14,6 +14,14 @@ public final class MountController: ObservableObject {
     /// Remotes we are deliberately unmounting, so the termination handler
     /// can tell an expected exit from a crash.
     private var expectedExits: Set<String> = []
+    /// Consecutive auto-remount attempts per remote (reset on success/manual action).
+    private var remountAttempts: [String: Int] = [:]
+    private var remountTasks: [String: Task<Void, Never>] = [:]
+
+    /// When true (default), a mount that dies unexpectedly is remounted
+    /// automatically with exponential backoff (1s … 60s, up to 8 tries).
+    public var autoRemount = true
+    private static let maxRemountAttempts = 8
 
     /// Directory under which per-remote mount points are created (~/MountGate).
     public let mountRoot: URL
@@ -109,6 +117,7 @@ public final class MountController: ObservableObject {
             }
             if Self.isMounted(path: point.path) {
                 states[remote.name] = .mounted
+                remountAttempts[remote.name] = nil
                 return
             }
             try? await Task.sleep(for: .milliseconds(250))
@@ -126,6 +135,10 @@ public final class MountController: ObservableObject {
     /// (SIGINT does NOT trigger a clean unmount — verified on macOS 26.)
     public func unmount(_ remote: Remote) async {
         guard !(states[remote.name]?.isBusy ?? false) else { return }
+        // A manual unmount always wins over a pending auto-remount.
+        remountTasks[remote.name]?.cancel()
+        remountTasks[remote.name] = nil
+        remountAttempts[remote.name] = nil
         let point = mountPoint(for: remote).path
         guard let process = processes[remote.name] else {
             // No child of ours — still try to clean up the mount point.
@@ -153,6 +166,8 @@ public final class MountController: ObservableObject {
 
     /// Synchronous best-effort teardown for app termination.
     public func unmountAllForShutdown() {
+        for task in remountTasks.values { task.cancel() }
+        remountTasks.removeAll()
         for name in processes.keys {
             expectedExits.insert(name)
             runUmount(path: mountRoot.appendingPathComponent(name).path, force: false)
@@ -175,11 +190,53 @@ public final class MountController: ObservableObject {
         processes[remote] = nil
         guard !wasExpected else { return }
         // Unexpected death (crash, network failure, killed externally).
+        let wasMounted = states[remote] == .mounted
         let log = logDirectory.appendingPathComponent("\(remote).log")
         let hint = Self.lastLogLine(of: log)
         states[remote] = .failed(hint ?? "rclone exited unexpectedly (status \(status))")
         let point = mountRoot.appendingPathComponent(remote).path
         if Self.isMounted(path: point) { forceUnmount(path: point) }
+
+        // Only remount mounts that were up and died — not ones that never
+        // came up (bad credentials would retry forever).
+        if autoRemount && wasMounted {
+            scheduleRemount(Remote(name: remote))
+        }
+    }
+
+    private func scheduleRemount(_ remote: Remote) {
+        let attempt = (remountAttempts[remote.name] ?? 0) + 1
+        guard attempt <= Self.maxRemountAttempts else {
+            states[remote.name] = .failed("Gave up after \(Self.maxRemountAttempts) reconnect attempts")
+            remountAttempts[remote.name] = nil
+            return
+        }
+        remountAttempts[remote.name] = attempt
+        let delay = min(pow(2.0, Double(attempt - 1)), 60)
+        remountTasks[remote.name]?.cancel()
+        remountTasks[remote.name] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            await self.mount(remote)
+            if self.states[remote.name] == .mounted {
+                self.remountAttempts[remote.name] = nil
+            } else if self.autoRemount {
+                self.scheduleRemount(remote)
+            }
+        }
+    }
+
+    /// Force-unmount anything under `mountRoot` still mounted from a previous
+    /// run (crash, SIGKILL). Call once at app startup, before mounting.
+    public func recoverStaleMounts() {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: mountRoot,
+                                                        includingPropertiesForKeys: nil) else { return }
+        for entry in entries where processes[entry.lastPathComponent] == nil {
+            if Self.isMounted(path: entry.path) {
+                forceUnmount(path: entry.path)
+            }
+        }
     }
 
     // MARK: - Mount table helpers
