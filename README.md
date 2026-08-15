@@ -28,7 +28,7 @@ Early development. See [milestones](#roadmap) below.
 ## Roadmap
 
 - [x] M0 — Repo scaffolding
-- [ ] M1 — Walking skeleton: mount an S3 bucket in Finder from the menu bar
+- [x] M1 — Walking skeleton: mount rclone remotes in Finder from the menu bar
 - [ ] M2 — Time Machine spike: validate Direct & Staged modes on macOS 26
 - [ ] M3 — Robust mount lifecycle (supervision, recovery)
 - [ ] M4 — Account wizards (S3, SFTP, WebDAV, Google Drive, GCS)
