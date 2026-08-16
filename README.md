@@ -19,6 +19,8 @@ Its headline feature: **Time Machine backups to your own cloud storage.**
   **Staged mode**: Time Machine backs up into a local APFS sparsebundle, and after
   each backup MountGate syncs only the changed band files to your cloud remote.
   Restore = download the bundle, attach, browse your backups.
+  ⚠️ Staged mode needs local (or external-disk) staging space roughly the size of
+  the backup set; a streaming mode that removes this constraint is planned (M8).
 
 ## Status
 
@@ -34,6 +36,9 @@ Early development. See [milestones](#roadmap) below.
 - [x] M5 — Time Machine productization (setup wizard, auto-sync after backups, restore)
 - [x] M6 — Settings (login item, cache limits), disconnect notifications
 - [ ] M7 — Signed/notarized releases (needs Apple Developer ID), Homebrew cask — CI with unsigned artifacts is live
+- [ ] M8 — Streaming Time Machine mode: local TM-advertising SMB server backed by the
+      rclone VFS, so full-disk backups stream to the cloud without needing
+      backup-sized local staging space (see [spike results](spikes/RESULTS.md))
 
 ## Building
 

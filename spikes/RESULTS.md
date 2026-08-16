@@ -53,6 +53,20 @@ Settings TM UI path).
 | Incremental sync after attach/detach | ✅ only 2 changed files / 24 MiB re-uploaded (band-level delta) |
 | Restore: `rclone copy` back + `hdiutil attach` | ✅ volume mounts, backup contents visible |
 
+### Real-world run (2026-08-16): staged mode capacity limit
+
+First real backup attempt: Time Machine wanted to copy **840 GB** while the
+local staging disk had **115 GB free** — staged mode requires local space
+roughly equal to the backup set, which many Macs don't have. Backup was
+stopped safely and the destination parked.
+
+**Conclusion: staged mode only fits backup sets that fit on the local disk
+(or an external staging disk). For full-disk backups to cloud, MountGate
+needs a streaming mode — a local SMB server advertising Time Machine
+support (Samba vfs_fruit-style, `fruit:time machine = yes`) backed by the
+rclone VFS, where the write cache drains to the cloud while backupd writes.
+That is the next major milestone (M8).**
+
 **Additional learnings for M5**
 - backupd re-attaches destination images by itself when a backup starts.
 - Ziv's disk is FileVault-encrypted → macOS warns when the destination bundle
