@@ -32,19 +32,25 @@ struct SettingsView: View {
                 }
             }
             Section("Mount cache") {
-                HStack {
-                    TextField("Max cache size", value: $cacheMaxSizeGB, format: .number)
-                        .frame(width: 70)
-                    Text("GB of local disk for the write/read cache")
-                        .foregroundStyle(.secondary)
+                LabeledContent("Max cache size") {
+                    HStack(spacing: 4) {
+                        TextField("", value: $cacheMaxSizeGB, format: .number)
+                            .labelsHidden()
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        Text("GB")
+                    }
                 }
-                HStack {
-                    TextField("Max cache age", value: $cacheMaxAgeHours, format: .number)
-                        .frame(width: 70)
-                    Text("hours before unused cached data is dropped")
-                        .foregroundStyle(.secondary)
+                LabeledContent("Max cache age") {
+                    HStack(spacing: 4) {
+                        TextField("", value: $cacheMaxAgeHours, format: .number)
+                            .labelsHidden()
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 60)
+                        Text("hours")
+                    }
                 }
-                Text("Applies to newly started mounts.")
+                Text("Local disk budget for each mount’s read/write cache and how long unused data is kept. Applies to newly started mounts.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
