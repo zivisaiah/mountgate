@@ -50,7 +50,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
+        // Forms are scrollable and have no intrinsic height; without an
+        // explicit height the hosting window collapses to an empty view.
+        .frame(width: 440, height: 320)
         .onChange(of: cacheMaxSizeGB) { state.applyMountSettings() }
         .onChange(of: cacheMaxAgeHours) { state.applyMountSettings() }
     }
