@@ -11,6 +11,14 @@ An open-source alternative to CloudMounter, Mountain Duck and ExpanDrive, powere
 
 ---
 
+<p align="center">
+  <img src="docs/images/finder-mount.png" alt="Cloud storage bucket mounted as a drive in macOS Finder by MountGate" width="640">
+</p>
+<p align="center">
+  <img src="docs/images/menubar.png" alt="MountGate cloud-drive icon in the macOS menu bar" width="428"><br>
+  <em>A cloud remote mounted in Finder, controlled from the menu bar — no kernel extensions.</em>
+</p>
+
 ## What can MountGate do?
 
 - **Mount cloud storage in Finder** — your S3 bucket or Google Drive appears as a normal volume; open, edit, copy and save files with any Mac app.
